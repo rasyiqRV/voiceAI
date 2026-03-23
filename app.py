@@ -1,6 +1,7 @@
 import os
 import uuid
 import io
+import tempfile
 from flask import Flask, request, jsonify, render_template, send_file
 try:
     from docx import Document
@@ -45,7 +46,8 @@ def transcribe():
         return jsonify({'error': f'Format file .{ext} tidak didukung. Gunakan MP3, WAV, M4A, OGG, FLAC, atau WEBM.'}), 415
 
     # Save to temp file so Whisper API can read it
-    tmp_dir = os.path.join(os.path.dirname(__file__), 'tmp_uploads')
+    # Use tempfile.gettempdir() so it works dynamically (e.g. /tmp on Vercel)
+    tmp_dir = os.path.join(tempfile.gettempdir(), 'VoiceScriptUploads')
     os.makedirs(tmp_dir, exist_ok=True)
     ext = file.filename.rsplit('.', 1)[1].lower()
     tmp_path = os.path.join(tmp_dir, f"{uuid.uuid4().hex}.{ext}")
