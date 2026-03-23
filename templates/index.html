@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoiceScript — Transkripsi Audio ke Teks Bahasa Indonesia</title>
+    <meta name="description" content="Upload file audio MP3, WAV, OGG, atau M4A dan dapatkan transkripsi teks Bahasa Indonesia yang akurat secara instan menggunakan AI.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <!-- Background orbs -->
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2C9.243 2 7 4.243 7 7v5c0 2.757 2.243 5 5 5s5-2.243 5-5V7c0-2.757-2.243-5-5-5z" fill="currentColor"/>
+                        <path d="M19.5 12c0 4.142-3.358 7.5-7.5 7.5S4.5 16.142 4.5 12H3c0 4.97 4.03 9 9 9s9-4.03 9-9h-1.5z" fill="currentColor" opacity="0.7"/>
+                        <path d="M12 21v2M9 23h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                </div>
+                <span class="logo-text">VoiceScript</span>
+            </div>
+            <div class="header-badge">
+                <span class="badge-dot"></span>
+                Powered by OpenAI Whisper
+            </div>
+        </header>
+
+        <!-- Hero -->
+        <section class="hero">
+            <h1 class="hero-title">Transkripsi Audio<br><span class="gradient-text">Bahasa Indonesia</span></h1>
+            <p class="hero-subtitle">Upload file audio dan dapatkan teks akurat dalam hitungan detik. Mendukung MP3, WAV, OGG, M4A, FLAC, dan WEBM.</p>
+        </section>
+
+        <!-- Upload Card -->
+        <div class="card upload-card">
+            <div id="drop-zone" class="drop-zone" role="button" aria-label="Area upload file audio" tabindex="0">
+                <div class="drop-zone-icon">
+                    <svg id="upload-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M7 10l5-5 5 5M12 5v12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M5 19h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    <div id="file-icon" class="file-icon hidden">
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M9 18V5l12-2v13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <circle cx="6" cy="18" r="3" stroke="currentColor" stroke-width="2"/>
+                            <circle cx="18" cy="16" r="3" stroke="currentColor" stroke-width="2"/>
+                        </svg>
+                    </div>
+                </div>
+                <p class="drop-zone-text" id="drop-zone-label">Seret & lepas file audio di sini</p>
+                <p class="drop-zone-hint" id="drop-zone-hint">atau klik untuk memilih file</p>
+                <div class="supported-formats">
+                    <span class="format-chip">MP3</span>
+                    <span class="format-chip">WAV</span>
+                    <span class="format-chip">M4A</span>
+                    <span class="format-chip">OGG</span>
+                    <span class="format-chip">FLAC</span>
+                    <span class="format-chip">WEBM</span>
+                </div>
+                <input type="file" id="file-input" accept=".mp3,.wav,.m4a,.ogg,.flac,.webm,.mpga,.mpeg,.mp4" hidden>
+            </div>
+
+            <!-- Audio Preview -->
+            <div id="audio-preview" class="audio-preview hidden">
+                <div class="audio-info">
+                    <div class="audio-thumbnail">🎵</div>
+                    <div class="audio-meta">
+                        <p class="audio-name" id="audio-name">filename.mp3</p>
+                        <p class="audio-size" id="audio-size">0 MB</p>
+                    </div>
+                    <button id="remove-file" class="btn-icon" aria-label="Hapus file" title="Hapus file">
+                        <svg viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                    </button>
+                </div>
+                <audio id="audio-player" controls></audio>
+            </div>
+
+            <!-- Transcribe Button -->
+            <button id="transcribe-btn" class="btn-primary" disabled>
+                <span id="btn-text">Pilih File untuk Memulai</span>
+                <div id="btn-spinner" class="spinner hidden"></div>
+            </button>
+        </div>
+
+        <!-- Result Card -->
+        <div id="result-card" class="card result-card hidden">
+            <div class="result-header">
+                <div class="result-title-wrap">
+                    <div class="result-icon">✦</div>
+                    <h2 class="result-title">Hasil Transkripsi</h2>
+                </div>
+                <div class="result-actions">
+                    <button id="paraphrase-btn" class="btn-primary" aria-label="Buat naskah berita">
+                        ✨ Buat Naskah Berita
+                    </button>
+                    <button id="copy-btn" class="btn-secondary" aria-label="Salin teks">
+                        <svg viewBox="0 0 24 24" fill="none" width="16" height="16">
+                            <rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" stroke-width="2"/>
+                            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke="currentColor" stroke-width="2"/>
+                        </svg>
+                        Salin
+                    </button>
+                    <button id="download-btn" class="btn-secondary" aria-label="Unduh file">
+                        <svg viewBox="0 0 24 24" fill="none" width="16" height="16">
+                            <path d="M12 3v13M7 14l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M3 19h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                        Unduh .docx
+                    </button>
+                </div>
+            </div>
+            <div class="result-body">
+                <p id="result-text" class="result-text"></p>
+            </div>
+            <div class="result-footer">
+                <span id="word-count" class="word-count-badge"></span>
+                <span class="result-lang">🇮🇩 Bahasa Indonesia</span>
+            </div>
+        </div>
+
+        <!-- News Script Card -->
+        <div id="news-card" class="card result-card hidden">
+            <div class="result-header">
+                <div class="result-title-wrap">
+                    <div class="result-icon">📰</div>
+                    <h2 class="result-title">Naskah Berita</h2>
+                </div>
+                <div class="result-actions">
+                    <button id="news-copy-btn" class="btn-secondary" aria-label="Salin naskah">
+                        <svg viewBox="0 0 24 24" fill="none" width="16" height="16">
+                            <rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" stroke-width="2"/>
+                            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke="currentColor" stroke-width="2"/>
+                        </svg>
+                        Salin
+                    </button>
+                    <button id="news-download-btn" class="btn-secondary" aria-label="Unduh naskah">
+                        <svg viewBox="0 0 24 24" fill="none" width="16" height="16">
+                            <path d="M12 3v13M7 14l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M3 19h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                        Unduh .docx
+                    </button>
+                </div>
+            </div>
+            <div class="result-body">
+                <p id="news-text" class="result-text"></p>
+            </div>
+        </div>
+
+        <!-- Error Card -->
+        <div id="error-card" class="card error-card hidden">
+            <div class="error-icon">⚠️</div>
+            <p id="error-message" class="error-message">Terjadi kesalahan.</p>
+            <button id="retry-btn" class="btn-secondary">Coba Lagi</button>
+        </div>
+
+        <!-- How it works section -->
+        <section class="how-it-works">
+            <h2 class="section-title">Cara Kerja</h2>
+            <div class="steps-grid">
+                <div class="step-card">
+                    <div class="step-number">01</div>
+                    <h3 class="step-title">Upload Audio</h3>
+                    <p class="step-desc">Seret & lepas atau pilih file audio dari perangkat Anda</p>
+                </div>
+                <div class="step-card">
+                    <div class="step-number">02</div>
+                    <h3 class="step-title">Proses AI</h3>
+                    <p class="step-desc">OpenAI Whisper menganalisis dan mentranskripsi audio secara akurat</p>
+                </div>
+                <div class="step-card">
+                    <div class="step-number">03</div>
+                    <h3 class="step-title">Dapatkan Teks</h3>
+                    <p class="step-desc">Salin atau unduh hasil transkripsi Bahasa Indonesia Anda</p>
+                </div>
+            </div>
+        </section>
+
+        <footer class="footer">
+            <p>Dibuat oleh rasyiq · File diproses secara aman dan tidak disimpan permanen</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='main.js') }}"></script>
+</body>
+</html>
