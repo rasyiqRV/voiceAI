@@ -131,22 +131,49 @@ transcribeBtn.addEventListener('click', async () => {
     hideResult();
     hideError();
 
-    const formData = new FormData();
-    formData.append('file', selectedFile);
+    const CHUNK_SIZE = 4 * 1024 * 1024; // 4MB per chunk (Vercel limit is 4.5MB)
+    const totalChunks = Math.ceil(selectedFile.size / CHUNK_SIZE);
+    const fileId = Date.now().toString() + '-' + Math.random().toString(36).substring(2, 9);
+    let finalData = null;
 
     try {
-        const response = await fetch('/transcribe', {
-            method: 'POST',
-            body: formData,
-        });
+        for (let i = 0; i < totalChunks; i++) {
+            const start = i * CHUNK_SIZE;
+            const end = Math.min(start + CHUNK_SIZE, selectedFile.size);
+            const chunk = selectedFile.slice(start, end);
 
-        const data = await response.json();
+            const formData = new FormData();
+            formData.append('file', chunk);
+            formData.append('chunkIndex', i);
+            formData.append('totalChunks', totalChunks);
+            formData.append('fileId', fileId);
+            formData.append('filename', selectedFile.name);
 
-        if (!response.ok || data.error) {
-            throw new Error(data.error || 'Terjadi kesalahan pada server.');
+            if (totalChunks > 1) {
+                btnText.textContent = `Mengunggah... (${Math.round(((i + 1) / totalChunks) * 100)}%)`;
+            } else {
+                btnText.textContent = 'Memproses Audio...';
+            }
+
+            const response = await fetch('/transcribe', {
+                method: 'POST',
+                body: formData,
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || data.error) {
+                throw new Error(data.error || 'Terjadi kesalahan pada server saat mengunggah.');
+            }
+
+            if (i === totalChunks - 1) {
+                finalData = data;
+            }
         }
 
-        showResult(data.transcription, lastFilename);
+        if (finalData && finalData.transcription) {
+            showResult(finalData.transcription, lastFilename);
+        }
 
     } catch (err) {
         showError(err.message);

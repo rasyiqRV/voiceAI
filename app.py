@@ -37,25 +37,44 @@ def transcribe():
         return jsonify({'error': 'Tidak ada file yang diunggah.'}), 400
 
     file = request.files['file']
+    
+    chunk_index = int(request.form.get('chunkIndex', 0))
+    total_chunks = int(request.form.get('totalChunks', 1))
+    file_id = request.form.get('fileId', uuid.uuid4().hex)
+    original_filename = request.form.get('filename', file.filename)
 
-    if file.filename == '':
+    if original_filename == '':
         return jsonify({'error': 'Nama file tidak boleh kosong.'}), 400
 
-    if not allowed_file(file.filename):
-        ext = file.filename.rsplit('.', 1)[-1].upper() if '.' in file.filename else 'UNKNOWN'
+    if not allowed_file(original_filename):
+        ext = original_filename.rsplit('.', 1)[-1].upper() if '.' in original_filename else 'UNKNOWN'
         return jsonify({'error': f'Format file .{ext} tidak didukung. Gunakan MP3, WAV, M4A, OGG, FLAC, atau WEBM.'}), 415
 
-    # Save to temp file so Whisper API can read it
-    # Use tempfile.gettempdir() so it works dynamically (e.g. /tmp on Vercel)
-    tmp_dir = os.path.join(tempfile.gettempdir(), 'VoiceScriptUploads')
+    # Save to temp file
+    tmp_dir = os.path.join(tempfile.gettempdir(), 'VoiceScriptUploads', file_id)
     os.makedirs(tmp_dir, exist_ok=True)
-    ext = file.filename.rsplit('.', 1)[1].lower()
-    tmp_path = os.path.join(tmp_dir, f"{uuid.uuid4().hex}.{ext}")
+    
+    chunk_path = os.path.join(tmp_dir, f"part_{chunk_index}")
+    file.save(chunk_path)
+    
+    # If not all chunks received yet
+    if chunk_index < total_chunks - 1:
+        return jsonify({'message': f'Chunk {chunk_index} received.'})
+
+    # All chunks received
+    ext = original_filename.rsplit('.', 1)[1].lower() if '.' in original_filename else 'mp3'
+    final_path = os.path.join(tmp_dir, f"final_{file_id}.{ext}")
 
     try:
-        file.save(tmp_path)
+        # Merge all chunks
+        with open(final_path, 'wb') as outfile:
+            for i in range(total_chunks):
+                part_path = os.path.join(tmp_dir, f"part_{i}")
+                with open(part_path, 'rb') as infile:
+                    outfile.write(infile.read())
+                os.remove(part_path)
 
-        with open(tmp_path, 'rb') as audio_file:
+        with open(final_path, 'rb') as audio_file:
             transcript = client.audio.transcriptions.create(
                 model="whisper-large-v3",   # Groq: free, faster, higher quality
                 file=audio_file,
@@ -67,7 +86,6 @@ def transcribe():
 
     except Exception as e:
         error_msg = str(e)
-        # Friendly error messages
         if 'api_key' in error_msg.lower() or 'authentication' in error_msg.lower() or 'invalid api key' in error_msg.lower():
             message = 'API Key tidak valid. Periksa GROQ_API_KEY di file .env Anda.'
         elif 'rate limit' in error_msg.lower():
@@ -79,8 +97,16 @@ def transcribe():
         return jsonify({'error': message}), 500
 
     finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        if os.path.exists(final_path):
+            try:
+                os.remove(final_path)
+            except:
+                pass
+        # Clean up the temp directory for this file
+        try:
+            os.rmdir(tmp_dir)
+        except:
+            pass
 
 
 @app.route('/paraphrase', methods=['POST'])
