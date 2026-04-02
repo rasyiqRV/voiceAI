@@ -131,7 +131,7 @@ transcribeBtn.addEventListener('click', async () => {
     hideResult();
     hideError();
 
-    const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB per chunk (Vercel limit is 4.5MB, turun ke 1MB agar sangat aman dari batas header/multipart)
+    const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB per chunk (Vercel limit is 4.5MB)
     const totalChunks = Math.ceil(selectedFile.size / CHUNK_SIZE);
     const fileId = Date.now().toString() + '-' + Math.random().toString(36).substring(2, 9);
     let finalData = null;

@@ -48,7 +48,7 @@ def transcribe():
 
     if not allowed_file(original_filename):
         ext = original_filename.rsplit('.', 1)[-1].upper() if '.' in original_filename else 'UNKNOWN'
-        return jsonify({'error': f'Format file .{ext} tidak didukung. Gunakan MP3, WAV, M4A, OGG, FLAC, atau WEBM.'}), 415
+        return jsonify({'error': f'Format file .{ext} tidak didukung.'}), 415
 
     # Save to temp file
     tmp_dir = os.path.join(tempfile.gettempdir(), 'VoiceScriptUploads', file_id)
@@ -102,7 +102,6 @@ def transcribe():
                 os.remove(final_path)
             except:
                 pass
-        # Clean up the temp directory for this file
         try:
             os.rmdir(tmp_dir)
         except:
