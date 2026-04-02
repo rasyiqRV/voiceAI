@@ -19,11 +19,30 @@ app.config['MAX_CONTENT_LENGTH'] = 25 * 1024 * 1024
 
 ALLOWED_EXTENSIONS = {'mp3', 'mp4', 'mpeg', 'mpga', 'm4a', 'wav', 'webm', 'ogg', 'flac'}
 
+# In-memory chunk storage for Vercel (stateless serverless functions
+# can't share filesystem between requests)
+chunk_storage = {}
+
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 
 def allowed_file(filename: str) -> bool:
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def classify_error(error_msg: str) -> str:
+    """Classify Groq API errors into user-friendly messages."""
+    msg_lower = error_msg.lower()
+    if 'api_key' in msg_lower or 'authentication' in msg_lower or 'invalid api key' in msg_lower:
+        return 'API Key tidak valid. Periksa GROQ_API_KEY di file .env Anda.'
+    elif 'rate limit' in msg_lower:
+        return 'Batas penggunaan API tercapai. Coba lagi beberapa saat.'
+    elif 'invalid file format' in msg_lower or 'audio' in msg_lower:
+        return 'File audio rusak atau format tidak valid. Pastikan file bisa diputar.'
+    elif 'timeout' in msg_lower or 'timed out' in msg_lower:
+        return 'Proses terlalu lama. Coba file audio yang lebih pendek.'
+    else:
+        return f'Terjadi kesalahan: {error_msg}'
 
 
 @app.route('/')
@@ -33,109 +52,153 @@ def index():
 
 @app.route('/transcribe', methods=['POST'])
 def transcribe():
-    if 'file' not in request.files:
-        return jsonify({'error': 'Tidak ada file yang diunggah.'}), 400
-
-    file = request.files['file']
-    
-    chunk_index = int(request.form.get('chunkIndex', 0))
-    total_chunks = int(request.form.get('totalChunks', 1))
-    file_id = request.form.get('fileId', uuid.uuid4().hex)
-    original_filename = request.form.get('filename', file.filename)
-
-    if original_filename == '':
-        return jsonify({'error': 'Nama file tidak boleh kosong.'}), 400
-
-    if not allowed_file(original_filename):
-        ext = original_filename.rsplit('.', 1)[-1].upper() if '.' in original_filename else 'UNKNOWN'
-        return jsonify({'error': f'Format file .{ext} tidak didukung.'}), 415
-
-    # Save to temp file
-    tmp_dir = os.path.join(tempfile.gettempdir(), 'VoiceScriptUploads', file_id)
-    os.makedirs(tmp_dir, exist_ok=True)
-    
-    chunk_path = os.path.join(tmp_dir, f"part_{chunk_index}")
-    file.save(chunk_path)
-    
-    # If not all chunks received yet
-    if chunk_index < total_chunks - 1:
-        return jsonify({'message': f'Chunk {chunk_index} received.'})
-
-    # All chunks received
-    ext = original_filename.rsplit('.', 1)[1].lower() if '.' in original_filename else 'mp3'
-    final_path = os.path.join(tmp_dir, f"final_{file_id}.{ext}")
-
     try:
-        # Merge all chunks
-        with open(final_path, 'wb') as outfile:
+        if 'file' not in request.files:
+            return jsonify({'error': 'Tidak ada file yang diunggah.'}), 400
+
+        file = request.files['file']
+
+        chunk_index = int(request.form.get('chunkIndex', 0))
+        total_chunks = int(request.form.get('totalChunks', 1))
+        file_id = request.form.get('fileId', uuid.uuid4().hex)
+        original_filename = request.form.get('filename', file.filename)
+
+        if original_filename == '':
+            return jsonify({'error': 'Nama file tidak boleh kosong.'}), 400
+
+        if not allowed_file(original_filename):
+            ext = original_filename.rsplit('.', 1)[-1].upper() if '.' in original_filename else 'UNKNOWN'
+            return jsonify({'error': f'Format file .{ext} tidak didukung.'}), 415
+
+        # Read chunk data into memory (works on Vercel stateless functions)
+        chunk_data = file.read()
+
+        if total_chunks == 1:
+            # Single chunk — process directly from memory (most common case)
+            audio_bytes = chunk_data
+        else:
+            # Multi-chunk — store in memory dict
+            if file_id not in chunk_storage:
+                chunk_storage[file_id] = {}
+            chunk_storage[file_id][chunk_index] = chunk_data
+
+            # Not all chunks received yet
+            if chunk_index < total_chunks - 1:
+                return jsonify({'message': f'Chunk {chunk_index} received.'})
+
+            # All chunks received — merge in memory
+            audio_bytes = b''
             for i in range(total_chunks):
-                part_path = os.path.join(tmp_dir, f"part_{i}")
-                with open(part_path, 'rb') as infile:
-                    outfile.write(infile.read())
-                os.remove(part_path)
+                if i not in chunk_storage.get(file_id, {}):
+                    # Chunk missing — likely hit different Vercel instance
+                    # Clean up and return error
+                    chunk_storage.pop(file_id, None)
+                    return jsonify({
+                        'error': 'Upload gagal: beberapa bagian file hilang. '
+                                 'Coba upload ulang atau gunakan file yang lebih kecil (maks 4MB untuk deployment online).'
+                    }), 400
+                audio_bytes += chunk_storage[file_id][i]
+            # Clean up stored chunks
+            chunk_storage.pop(file_id, None)
 
-        with open(final_path, 'rb') as audio_file:
-            transcript = client.audio.transcriptions.create(
-                model="whisper-large-v3",   # Groq: free, faster, higher quality
-                file=audio_file,
-                language="id",              # Force Indonesian
-                response_format="text"
-            )
+        # Write to temp file for Groq API (it needs a file-like object with name)
+        ext = original_filename.rsplit('.', 1)[1].lower() if '.' in original_filename else 'mp3'
+        tmp_path = None
+        try:
+            tmp_fd, tmp_path = tempfile.mkstemp(suffix=f'.{ext}')
+            with os.fdopen(tmp_fd, 'wb') as tmp_file:
+                tmp_file.write(audio_bytes)
 
-        return jsonify({'transcription': transcript.strip()})
+            with open(tmp_path, 'rb') as audio_file:
+                transcript = client.audio.transcriptions.create(
+                    model="whisper-large-v3",
+                    file=audio_file,
+                    language="id",
+                    response_format="text"
+                )
+
+            return jsonify({'transcription': transcript.strip()})
+
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except:
+                    pass
 
     except Exception as e:
-        error_msg = str(e)
-        if 'api_key' in error_msg.lower() or 'authentication' in error_msg.lower() or 'invalid api key' in error_msg.lower():
-            message = 'API Key tidak valid. Periksa GROQ_API_KEY di file .env Anda.'
-        elif 'rate limit' in error_msg.lower():
-            message = 'Batas penggunaan API tercapai. Coba lagi beberapa saat.'
-        elif 'invalid file format' in error_msg.lower() or 'audio' in error_msg.lower():
-            message = 'File audio rusak atau format tidak valid. Pastikan file bisa diputar.'
-        else:
-            message = f'Terjadi kesalahan: {error_msg}'
-        return jsonify({'error': message}), 500
-
-    finally:
-        if os.path.exists(final_path):
-            try:
-                os.remove(final_path)
-            except:
-                pass
-        try:
-            os.rmdir(tmp_dir)
-        except:
-            pass
+        return jsonify({'error': classify_error(str(e))}), 500
 
 
 @app.route('/paraphrase', methods=['POST'])
 def paraphrase():
-    data = request.json
-    if not data or 'text' not in data:
-        return jsonify({'error': 'Teks tidak ditemukan.'}), 400
-
-    text = data['text']
-    
-    if not text.strip():
-        return jsonify({'error': 'Teks kosong.'}), 400
-
     try:
+        data = request.json
+        if not data or 'text' not in data:
+            return jsonify({'error': 'Teks tidak ditemukan.'}), 400
+
+        text = data['text']
+
+        if not text.strip():
+            return jsonify({'error': 'Teks kosong.'}), 400
+
         completion = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
                 {
                     "role": "system",
                     "content": (
-                        "Ubah teks transkrip mentah dari user menjadi naskah berita terpisah berdasarkan topik.\n\n"
-                        "Ikuti format penulisan naskah berita radio/TV yang ketat ini:\n"
-                        "1. Jika ada beberapa topik, pisahkan menjadi beberapa berita (berikan nomor seperti '1 // Judul Berita', '2 // Judul Berita').\n"
-                        "2. Gunakan tanda '/' sebagai pengganti koma (jeda singkat) dan '//' sebagai pengganti titik (jeda panjang).\n"
-                        "3. Paragraf pertama HARUS deduktif (menyampaikan inti berita keseluruhan).\n"
-                        "4. Paragraf berikutnya menjelaskan rincian dari apa yang disampaikan di paragraf pertama secara lugas, ringkas, dan to the point.\n"
-                        "5. Setelah rincian, buat baris baru untuk kutipan narasumber dengan format: 'Insert -- [Nama Narasumber] - [Judul Berita]'.\n"
-                        "6. Lanjutkan dengan paragraf pernyataan dari narasumber.\n"
-                        "7. dibuat agar punya story telling yang bagus.\n"
-                        "8. Akhiri setiap berita dengan tanda '/// (Nama Reporter)', gunakan '(----)' sebagai default reporter."
+                        "Kamu adalah jurnalis senior dan editor berita profesional untuk radio/TV. "
+                        "Tugasmu mengubah transkrip mentah menjadi BEBERAPA naskah berita terpisah yang siap siar.\n\n"
+
+                        "## ATURAN UTAMA\n"
+                        "1. WAJIB buat MINIMAL 2 berita, idealnya 4 berita dari satu transkrip. "
+                        "Pecah berdasarkan topik, sudut pandang, atau aspek berbeda dari isu yang sama.\n"
+                        "2. Jika transkrip hanya membahas 1 topik, tetap pecah menjadi minimal 2 berita "
+                        "dengan ANGLE (sudut pandang) BERBEDA. Contoh:\n"
+                        "   - Berita 1: Fokus pada peristiwa/fakta utama\n"
+                        "   - Berita 2: Fokus pada dampak ke masyarakat\n"
+                        "   - Berita 3: Fokus pada respons/tanggapan pihak terkait\n"
+                        "   - Berita 4: Fokus pada latar belakang/konteks lebih luas\n\n"
+
+                        "## FORMAT JUDUL — HARUS MEMANCING RASA PENASARAN!\n"
+                        "Judul harus seperti headline media online yang bikin orang HARUS klik/baca:\n"
+                        "- Gunakan teknik clickbait yang etis: pertanyaan retoris, fakta mengejutkan, angka spesifik\n"
+                        "- Contoh BAGUS: 'Warga Kaget/ Jalan Utama Kota Mendadak Ditutup Tanpa Pemberitahuan'\n"
+                        "- Contoh BAGUS: 'Terungkap/ Alasan di Balik Kenaikan Harga Sembako 40 Persen'\n"
+                        "- Contoh BAGUS: 'Baru Sehari Dilantik/ Pejabat Ini Langsung Buat Kebijakan Kontroversial'\n"
+                        "- Contoh BURUK (jangan seperti ini): 'Berita Tentang Jalan Ditutup'\n\n"
+
+                        "## FORMAT NASKAH\n"
+                        "Gunakan format persis ini untuk SETIAP berita:\n\n"
+                        "```\n"
+                        "[Nomor] // [JUDUL YANG MEMANCING PENASARAN]\n\n"
+                        "[Paragraf pembuka — lead deduktif. Langsung sampaikan inti berita secara dramatis dan menarik. "
+                        "Gunakan '/' sebagai pengganti koma dan '//' sebagai pengganti titik.]\n\n"
+                        "[Paragraf konteks — berikan latar belakang yang membuat pembaca memahami mengapa berita ini penting. "
+                        "Bangun narasi storytelling: ada konflik, ada tokoh, ada dampak.]\n\n"
+                        "[Paragraf detail — jabarkan poin-poin penting secara rinci tapi tetap mengalir seperti cerita, "
+                        "bukan daftar kaku. Setiap poin harus terhubung secara logis.]\n\n"
+                        "Insert -- [Nama Narasumber] - [Jabatan/Keterangan]\n\n"
+                        "[Paragraf kutipan — tulis pernyataan narasumber. Jika tidak ada narasumber spesifik di transkrip, "
+                        "buat kutipan dari pihak yang relevan seperti 'pihak terkait' atau 'narasumber'.]\n\n"
+                        "[Paragraf penutup — tutup dengan dampak, harapan, atau langkah ke depan. "
+                        "Buat pembaca merasa mendapat informasi lengkap.]\n\n"
+                        "/// (----)\n"
+                        "```\n\n"
+
+                        "## GAYA PENULISAN — STORYTELLING\n"
+                        "- Tulis seperti BERCERITA, bukan membaca laporan. Pembaca harus merasa 'terbawa'.\n"
+                        "- Gunakan kalimat aktif, bukan pasif.\n"
+                        "- Sisipkan detail sensorik jika memungkinkan (apa yang terlihat, terdengar, dirasakan).\n"
+                        "- Bangun tensi di awal, berikan fakta di tengah, dan resolusi di akhir.\n"
+                        "- Tetap FAKTUAL — jangan menambah informasi yang tidak ada di transkrip.\n"
+                        "- Gunakan '/' sebagai pengganti koma (jeda singkat) dan '//' sebagai pengganti titik (jeda panjang).\n\n"
+
+                        "## PENTING\n"
+                        "- JANGAN gabung semua topik jadi 1 berita. WAJIB pisahkan.\n"
+                        "- Setiap berita harus bisa BERDIRI SENDIRI (pembaca tidak perlu baca berita lain untuk paham).\n"
+                        "- Jangan gunakan markdown formatting (**, ##, dll). Tulis plain text saja."
                     )
                 },
                 {
@@ -143,11 +206,12 @@ def paraphrase():
                     "content": text
                 }
             ],
-            temperature=0.7,
-            max_tokens=1024,
+            temperature=0.75,
+            max_tokens=4096,
         )
         paraphrased_text = completion.choices[0].message.content
         return jsonify({'paraphrased': paraphrased_text.strip()})
+
     except Exception as e:
         error_msg = str(e)
         if 'api_key' in error_msg.lower() or 'authentication' in error_msg.lower() or 'invalid api key' in error_msg.lower():
@@ -161,28 +225,31 @@ def paraphrase():
 
 @app.route('/export-docx', methods=['POST'])
 def export_docx():
-    data = request.json
-    if not data or 'text' not in data:
-        return jsonify({'error': 'Teks tidak ditemukan.'}), 400
-        
-    text = data['text']
-    filename = data.get('filename', 'VoiceScript_Document')
-    
-    document = Document()
-    for paragraph in text.split('\n'):
-        if paragraph.strip():
-            document.add_paragraph(paragraph.strip())
-            
-    f = io.BytesIO()
-    document.save(f)
-    f.seek(0)
-    
-    return send_file(
-        f,
-        as_attachment=True,
-        download_name=f"{filename}.docx",
-        mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    )
+    try:
+        data = request.json
+        if not data or 'text' not in data:
+            return jsonify({'error': 'Teks tidak ditemukan.'}), 400
+
+        text = data['text']
+        filename = data.get('filename', 'VoiceScript_Document')
+
+        document = Document()
+        for paragraph in text.split('\n'):
+            if paragraph.strip():
+                document.add_paragraph(paragraph.strip())
+
+        f = io.BytesIO()
+        document.save(f)
+        f.seek(0)
+
+        return send_file(
+            f,
+            as_attachment=True,
+            download_name=f"{filename}.docx",
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+    except Exception as e:
+        return jsonify({'error': f'Gagal membuat dokumen: {str(e)}'}), 500
 
 
 @app.errorhandler(413)

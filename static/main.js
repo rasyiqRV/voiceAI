@@ -131,7 +131,7 @@ transcribeBtn.addEventListener('click', async () => {
     hideResult();
     hideError();
 
-    const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB per chunk (Vercel limit is 4.5MB)
+    const CHUNK_SIZE = 4 * 1024 * 1024; // 4MB per chunk (just under Vercel's 4.5MB limit)
     const totalChunks = Math.ceil(selectedFile.size / CHUNK_SIZE);
     const fileId = Date.now().toString() + '-' + Math.random().toString(36).substring(2, 9);
     let finalData = null;
@@ -160,7 +160,18 @@ transcribeBtn.addEventListener('click', async () => {
                 body: formData,
             });
 
-            const data = await response.json();
+            // Safe JSON parsing — handles non-JSON responses from Vercel
+            const responseText = await response.text();
+            let data;
+            try {
+                data = JSON.parse(responseText);
+            } catch (parseErr) {
+                throw new Error(
+                    response.status === 413
+                        ? 'File terlalu besar. Gunakan file audio di bawah 4MB untuk versi online.'
+                        : `Server error (${response.status}): ${responseText.substring(0, 100)}`
+                );
+            }
 
             if (!response.ok || data.error) {
                 throw new Error(data.error || 'Terjadi kesalahan pada server saat mengunggah.');
@@ -240,7 +251,14 @@ paraphraseBtn.addEventListener('click', async () => {
             body: JSON.stringify({ text: textToParaphrase })
         });
 
-        const data = await response.json();
+        // Safe JSON parsing
+        const responseText = await response.text();
+        let data;
+        try {
+            data = JSON.parse(responseText);
+        } catch (parseErr) {
+            throw new Error(`Server error (${response.status}): ${responseText.substring(0, 100)}`);
+        }
 
         if (!response.ok || data.error) {
             throw new Error(data.error || 'Terjadi kesalahan saat menyusun naskah.');
