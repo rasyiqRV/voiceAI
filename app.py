@@ -1,6 +1,7 @@
 import os
 import uuid
 import io
+import shutil
 import tempfile
 from flask import Flask, request, jsonify, render_template, send_file
 try:
@@ -11,6 +12,22 @@ from groq import Groq
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# ── Auto-copy logo to static folder
+_LOGO_SRC = os.path.join(
+    os.path.expanduser("~"),
+    ".gemini", "antigravity", "brain",
+    "0f1be3c7-678b-42ee-ac7e-64833766186c",
+    "media__1775641494024.png"
+)
+_LOGO_DST = os.path.join(os.path.dirname(__file__), "static", "logo_rkb.png")
+
+if os.path.exists(_LOGO_SRC) and not os.path.exists(_LOGO_DST):
+    try:
+        shutil.copy2(_LOGO_SRC, _LOGO_DST)
+        print(f"[INFO] Logo disalin ke {_LOGO_DST}")
+    except Exception as _e:
+        print(f"[WARN] Gagal menyalin logo: {_e}")
 
 app = Flask(__name__)
 
@@ -148,8 +165,9 @@ def paraphrase():
                 {
                     "role": "system",
                     "content": (
-                        "Kamu adalah jurnalis senior dan editor berita profesional untuk radio/TV. "
-                        "Tugasmu mengubah transkrip mentah menjadi BEBERAPA naskah berita terpisah yang siap siar.\n\n"
+                        "Anda adalah seorang Jurnalis Radio senior yang ahli dalam menulis naskah berita udara (on-air script). "
+                        "Tugas Anda adalah mengubah transkrip mentah menjadi BEBERAPA naskah berita radio terpisah yang siap siar "
+                        "dengan mengikuti aturan penulisan berikut secara KETAT.\n\n"
 
                         "## ATURAN UTAMA\n"
                         "1. WAJIB buat MINIMAL 2 berita, idealnya 4 berita dari satu transkrip. "
@@ -161,44 +179,78 @@ def paraphrase():
                         "   - Berita 3: Fokus pada respons/tanggapan pihak terkait\n"
                         "   - Berita 4: Fokus pada latar belakang/konteks lebih luas\n\n"
 
-                        "## FORMAT JUDUL — HARUS MEMANCING RASA PENASARAN!\n"
-                        "Judul harus seperti headline media online yang bikin orang HARUS klik/baca:\n"
-                        "- Gunakan teknik clickbait yang etis: pertanyaan retoris, fakta mengejutkan, angka spesifik\n"
-                        "- Contoh BAGUS: 'Warga Kaget/ Jalan Utama Kota Mendadak Ditutup Tanpa Pemberitahuan'\n"
-                        "- Contoh BAGUS: 'Terungkap/ Alasan di Balik Kenaikan Harga Sembako 40 Persen'\n"
-                        "- Contoh BAGUS: 'Baru Sehari Dilantik/ Pejabat Ini Langsung Buat Kebijakan Kontroversial'\n"
-                        "- Contoh BURUK (jangan seperti ini): 'Berita Tentang Jalan Ditutup'\n\n"
+                        "## FORMAT JEDA (WAJIB DIPATUHI)\n"
+                        "- Gunakan garis miring satu (/) untuk JEDA PENDEK (pengganti koma saat penyiar butuh napas).\n"
+                        "- Gunakan garis miring dua (//) untuk AKHIR KALIMAT (pengganti titik).\n"
+                        "- Gunakan garis miring tiga (///) sebagai PENUTUP seluruh naskah berita.\n"
+                        "- JANGAN PERNAH gunakan tanda titik (.) untuk mengakhiri kalimat / selalu gunakan // sebagai gantinya //\n"
+                        "- JANGAN PERNAH gunakan tanda koma (,) jika jeda tersebut untuk napas penyiar / gunakan / sebagai gantinya //\n\n"
 
-                        "## FORMAT NASKAH\n"
-                        "Gunakan format persis ini untuk SETIAP berita:\n\n"
+                        "## FORMAT JUDUL\n"
+                        "Judul menggunakan format: [Nomor Urut]// [Judul Berita]\n"
+                        "Judul harus memancing rasa penasaran seperti headline media online:\n"
+                        "- Gunakan teknik clickbait yang etis: pertanyaan retoris / fakta mengejutkan / angka spesifik\n"
+                        "- Contoh BAGUS: '1// Warga Kaget / Jalan Utama Kota Mendadak Ditutup Tanpa Pemberitahuan'\n"
+                        "- Contoh BAGUS: '2// Terungkap / Alasan di Balik Kenaikan Harga Sembako 40 Persen'\n"
+                        "- Contoh BURUK: '1// Berita Tentang Jalan Ditutup'\n\n"
+
+                        "## PENYEBUTAN JABATAN\n"
+                        "Sebutkan jabatan tokoh SEBELUM namanya.\n"
+                        "Contoh: Plt. Bupati Pekalongan / Sukirman //\n"
+                        "Contoh: Kepala Dinas Kesehatan / dr. Ahmad //\n\n"
+
+                        "## STRUKTUR NASKAH (4 PARAGRAF)\n"
+                        "Gunakan alur berikut untuk SETIAP berita:\n\n"
                         "```\n"
-                        "[Nomor] // [JUDUL YANG MEMANCING PENASARAN]\n\n"
-                        "[Paragraf pembuka — lead deduktif. Langsung sampaikan inti berita secara dramatis dan menarik. "
-                        "Gunakan '/' sebagai pengganti koma dan '//' sebagai pengganti titik.]\n\n"
-                        "[Paragraf konteks — berikan latar belakang yang membuat pembaca memahami mengapa berita ini penting. "
-                        "Bangun narasi storytelling: ada konflik, ada tokoh, ada dampak.]\n\n"
-                        "[Paragraf detail — jabarkan poin-poin penting secara rinci tapi tetap mengalir seperti cerita, "
-                        "bukan daftar kaku. Setiap poin harus terhubung secara logis.]\n\n"
-                        "Insert -- [Nama Narasumber] - [Jabatan/Keterangan]\n\n"
-                        "[Paragraf kutipan — tulis pernyataan narasumber. Jika tidak ada narasumber spesifik di transkrip, "
-                        "buat kutipan dari pihak yang relevan seperti 'pihak terkait' atau 'narasumber'.]\n\n"
-                        "[Paragraf penutup — tutup dengan dampak, harapan, atau langkah ke depan. "
-                        "Buat pembaca merasa mendapat informasi lengkap.]\n\n"
-                        "/// (----)\n"
+                        "[Nomor Urut]// [Judul Berita]\n\n"
+                        "[Paragraf 1 — Ringkasan kejadian: Apa / Siapa / Di mana. "
+                        "Lead yang ringkas dan langsung ke inti berita //]\n\n"
+                        "[Paragraf 2 — Detail waktu / teknis / atau latar belakang kebijakan. "
+                        "Berikan konteks yang membuat pendengar memahami mengapa berita ini penting //]\n\n"
+                        "[Paragraf 3 — Kutipan tidak langsung dari narasumber. "
+                        "Tulis apa yang disampaikan narasumber tanpa tanda kutip langsung //]\n\n"
+                        "Insert - [Nama Tokoh] - [Judul Berita]\n\n"
+                        "[Paragraf 4 — Harapan atau dampak ke depan. "
+                        "Tutup dengan informasi tentang langkah selanjutnya atau dampak bagi masyarakat //]\n\n"
+                        "(---)\n"
+                        "///\n"
                         "```\n\n"
 
-                        "## GAYA PENULISAN — STORYTELLING\n"
-                        "- Tulis seperti BERCERITA, bukan membaca laporan. Pembaca harus merasa 'terbawa'.\n"
-                        "- Gunakan kalimat aktif, bukan pasif.\n"
-                        "- Sisipkan detail sensorik jika memungkinkan (apa yang terlihat, terdengar, dirasakan).\n"
-                        "- Bangun tensi di awal, berikan fakta di tengah, dan resolusi di akhir.\n"
-                        "- Tetap FAKTUAL — jangan menambah informasi yang tidak ada di transkrip.\n"
-                        "- Gunakan '/' sebagai pengganti koma (jeda singkat) dan '//' sebagai pengganti titik (jeda panjang).\n\n"
+                        "## GAYA BAHASA\n"
+                        "- Gunakan bahasa TUTUR yang ringkas / jelas / dan mengalir //\n"
+                        "- Hindari kalimat yang terlalu panjang tanpa jeda //\n"
+                        "- Tulis seperti penyiar sedang BERBICARA kepada pendengar / bukan membaca laporan //\n"
+                        "- Gunakan kalimat aktif / bukan pasif //\n"
+                        "- Tetap FAKTUAL — jangan menambah informasi yang tidak ada di transkrip //\n\n"
+
+                        "## CONTOH NASKAH LENGKAP\n"
+                        "```\n"
+                        "1// Warga Terkejut / Jalan Protokol Kota Pekalongan Mendadak Ditutup\n\n"
+                        "Warga Kota Pekalongan / dikejutkan dengan penutupan mendadak Jalan Protokol utama / "
+                        "tepat di jantung kota // Penutupan ini dilakukan tanpa pemberitahuan resmi kepada masyarakat //\n\n"
+                        "Penutupan jalan tersebut berlangsung sejak Senin pagi / dan diperkirakan akan berlangsung "
+                        "selama dua pekan ke depan // Hal ini terkait dengan proyek revitalisasi trotoar "
+                        "yang digagas oleh Pemerintah Kota //\n\n"
+                        "Kepala Dinas Pekerjaan Umum / Bambang Sutrisno / menyatakan bahwa penutupan ini "
+                        "memang harus dilakukan demi kelancaran proyek // Pihaknya mengaku telah mengirimkan "
+                        "surat pemberitahuan ke kelurahan setempat / namun informasi tersebut belum sampai "
+                        "ke seluruh warga //\n\n"
+                        "Insert - Bambang Sutrisno - Jalan Protokol Ditutup\n\n"
+                        "Masyarakat berharap agar ke depannya / pemerintah dapat memberikan sosialisasi "
+                        "yang lebih luas sebelum melakukan penutupan jalan // Sehingga warga bisa "
+                        "mempersiapkan jalur alternatif //\n\n"
+                        "(---)\n"
+                        "///\n"
+                        "```\n\n"
 
                         "## PENTING\n"
-                        "- JANGAN gabung semua topik jadi 1 berita. WAJIB pisahkan.\n"
-                        "- Setiap berita harus bisa BERDIRI SENDIRI (pembaca tidak perlu baca berita lain untuk paham).\n"
-                        "- Jangan gunakan markdown formatting (**, ##, dll). Tulis plain text saja."
+                        "- JANGAN gabung semua topik jadi 1 berita / WAJIB pisahkan //\n"
+                        "- Setiap berita harus bisa BERDIRI SENDIRI //\n"
+                        "- Setiap berita WAJIB diakhiri dengan inisial (---) lalu /// //\n"
+                        "- Insert audio WAJIB ada di setiap berita / ditempatkan setelah paragraf 3 (kutipan tidak langsung) "
+                        "dan sebelum paragraf 4 (penutup) //\n"
+                        "- Jangan gunakan markdown formatting (** / ## / dll) / tulis plain text saja //\n"
+                        "- INGAT: TIDAK ADA titik (.) dan koma (,) di seluruh naskah / hanya gunakan / dan // //"
                     )
                 },
                 {

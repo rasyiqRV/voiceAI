@@ -93,29 +93,26 @@ body {
     margin-bottom: 1rem;
 }
 .logo {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
+    display: block;
+    position: relative;
+    width: 220px;
+    height: 80px;
+    overflow: hidden;
 }
-.logo-icon {
-    width: 36px; height: 36px;
-    background: var(--gradient);
-    border-radius: var(--radius-xs);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    box-shadow: 0 4px 20px rgba(124, 92, 252, 0.4);
+.logo-img {
+    position: absolute;
+    width: 250px;
+    height: 250px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    object-fit: contain;
+    filter: drop-shadow(0 0 8px rgba(124, 92, 252, 0.4));
+    transition: filter var(--transition), opacity var(--transition);
 }
-.logo-icon svg { width: 20px; height: 20px; }
-.logo-text {
-    font-size: 1.15rem;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    background: var(--gradient-text);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+.logo-img:hover {
+    filter: drop-shadow(0 0 14px rgba(124, 92, 252, 0.7));
+    opacity: 0.9;
 }
 .header-badge {
     display: flex;
