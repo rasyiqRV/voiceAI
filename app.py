@@ -13,22 +13,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── Auto-copy logo to static folder
-_LOGO_SRC = os.path.join(
-    os.path.expanduser("~"),
-    ".gemini", "antigravity", "brain",
-    "0f1be3c7-678b-42ee-ac7e-64833766186c",
-    "media__1775641494024.png"
-)
-_LOGO_DST = os.path.join(os.path.dirname(__file__), "static", "logo_rkb.png")
-
-if os.path.exists(_LOGO_SRC) and not os.path.exists(_LOGO_DST):
-    try:
-        shutil.copy2(_LOGO_SRC, _LOGO_DST)
-        print(f"[INFO] Logo disalin ke {_LOGO_DST}")
-    except Exception as _e:
-        print(f"[WARN] Gagal menyalin logo: {_e}")
-
 app = Flask(__name__)
 
 # Max file size: 25MB (Whisper API limit)
