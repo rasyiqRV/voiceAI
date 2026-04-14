@@ -1,6 +1,7 @@
 import os
 import uuid
 import io
+import re
 import shutil
 import tempfile
 from flask import Flask, request, jsonify, render_template, send_file
@@ -308,6 +309,44 @@ def paraphrase():
         else:
             message = f'Terjadi kesalahan saat menyusun naskah: {error_msg}'
         return jsonify({'error': message}), 500
+
+
+@app.route('/upload-transcript', methods=['POST'])
+def upload_transcript():
+    """Accept a .doc/.docx file upload and return the extracted text."""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'Tidak ada file yang diunggah.'}), 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'Nama file tidak boleh kosong.'}), 400
+
+        filename = file.filename.lower()
+        if not (filename.endswith('.docx') or filename.endswith('.doc')):
+            return jsonify({'error': 'Format file tidak didukung. Gunakan file .doc atau .docx.'}), 415
+
+        # Read the file content
+        file_bytes = file.read()
+
+        try:
+            doc = Document(io.BytesIO(file_bytes))
+            full_text = []
+            for para in doc.paragraphs:
+                text = para.text.strip()
+                if text:
+                    full_text.append(text)
+            extracted = '\n'.join(full_text)
+        except Exception:
+            return jsonify({'error': 'Gagal membaca file. Pastikan file berformat .docx yang valid.'}), 400
+
+        if not extracted.strip():
+            return jsonify({'error': 'File tidak mengandung teks.'}), 400
+
+        return jsonify({'text': extracted.strip(), 'filename': file.filename})
+
+    except Exception as e:
+        return jsonify({'error': f'Terjadi kesalahan: {str(e)}'}), 500
 
 
 @app.route('/export-docx', methods=['POST'])
