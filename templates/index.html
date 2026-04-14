@@ -85,6 +85,92 @@
             </button>
         </div>
 
+        <!-- OR Divider -->
+        <div class="or-divider">
+            <div class="or-line"></div>
+            <span class="or-text">ATAU</span>
+            <div class="or-line"></div>
+        </div>
+
+        <!-- Transcript Doc Upload Card -->
+        <div class="card upload-card" id="doc-upload-card">
+            <div class="doc-card-header">
+                <div class="doc-card-icon">📄</div>
+                <div>
+                    <h2 class="doc-card-title">Upload Transkrip Mentah</h2>
+                    <p class="doc-card-subtitle">Upload file .doc/.docx berisi transkrip mentah untuk langsung dibuatkan naskah berita</p>
+                </div>
+            </div>
+
+            <div id="doc-drop-zone" class="drop-zone doc-drop-zone" role="button" aria-label="Area upload file dokumen" tabindex="0">
+                <div class="drop-zone-icon doc-drop-icon">
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <polyline points="14,2 14,8 20,8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <line x1="16" y1="13" x2="8" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        <line x1="16" y1="17" x2="8" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        <polyline points="10,9 9,9 8,9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </div>
+                <p class="drop-zone-text" id="doc-drop-label">Seret & lepas file dokumen di sini</p>
+                <p class="drop-zone-hint" id="doc-drop-hint">atau klik untuk memilih file .doc / .docx</p>
+                <div class="supported-formats">
+                    <span class="format-chip">DOC</span>
+                    <span class="format-chip">DOCX</span>
+                </div>
+                <input type="file" id="doc-file-input" accept=".doc,.docx" hidden>
+            </div>
+
+            <!-- Document Preview -->
+            <div id="doc-preview" class="audio-preview hidden">
+                <div class="audio-info">
+                    <div class="audio-thumbnail doc-thumbnail">📄</div>
+                    <div class="audio-meta">
+                        <p class="audio-name" id="doc-name">document.docx</p>
+                        <p class="audio-size" id="doc-size">0 KB</p>
+                    </div>
+                    <button id="doc-remove-file" class="btn-icon" aria-label="Hapus file" title="Hapus file">
+                        <svg viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Generate Script Button -->
+            <button id="doc-generate-btn" class="btn-primary" disabled>
+                <span id="doc-btn-text">Pilih File Dokumen untuk Memulai</span>
+                <div id="doc-btn-spinner" class="spinner hidden"></div>
+            </button>
+        </div>
+
+        <!-- Doc Script Result Card -->
+        <div id="doc-news-card" class="card result-card hidden">
+            <div class="result-header">
+                <div class="result-title-wrap">
+                    <div class="result-icon">📰</div>
+                    <h2 class="result-title">Naskah Berita (dari Dokumen)</h2>
+                </div>
+                <div class="result-actions">
+                    <button id="doc-news-copy-btn" class="btn-secondary" aria-label="Salin naskah">
+                        <svg viewBox="0 0 24 24" fill="none" width="16" height="16">
+                            <rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" stroke-width="2"/>
+                            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke="currentColor" stroke-width="2"/>
+                        </svg>
+                        Salin
+                    </button>
+                    <button id="doc-news-download-btn" class="btn-secondary" aria-label="Unduh naskah">
+                        <svg viewBox="0 0 24 24" fill="none" width="16" height="16">
+                            <path d="M12 3v13M7 14l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M3 19h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                        Unduh .docx
+                    </button>
+                </div>
+            </div>
+            <div class="result-body">
+                <p id="doc-news-text" class="result-text"></p>
+            </div>
+        </div>
+
         <!-- Result Card -->
         <div id="result-card" class="card result-card hidden">
             <div class="result-header">

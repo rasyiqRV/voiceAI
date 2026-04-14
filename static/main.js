@@ -406,3 +406,232 @@ function formatFileSize(bytes) {
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
 }
+
+// ══════════════════════════════════════════════════
+//  Document Upload Feature (Transcript → Script)
+// ══════════════════════════════════════════════════
+
+const docDropZone     = document.getElementById('doc-drop-zone');
+const docFileInput    = document.getElementById('doc-file-input');
+const docGenerateBtn  = document.getElementById('doc-generate-btn');
+const docBtnText      = document.getElementById('doc-btn-text');
+const docBtnSpinner   = document.getElementById('doc-btn-spinner');
+const docDropLabel    = document.getElementById('doc-drop-label');
+const docDropHint     = document.getElementById('doc-drop-hint');
+const docPreview      = document.getElementById('doc-preview');
+const docNameEl       = document.getElementById('doc-name');
+const docSizeEl       = document.getElementById('doc-size');
+const docRemoveBtn    = document.getElementById('doc-remove-file');
+const docNewsCard     = document.getElementById('doc-news-card');
+const docNewsText     = document.getElementById('doc-news-text');
+const docNewsCopyBtn  = document.getElementById('doc-news-copy-btn');
+const docNewsDownloadBtn = document.getElementById('doc-news-download-btn');
+
+let selectedDocFile = null;
+let docFilename = '';
+
+// ── Doc File Selection ─────────────────────────
+
+docDropZone.addEventListener('click', (e) => {
+    if (e.target.closest('#doc-remove-file')) return;
+    docFileInput.click();
+});
+
+docDropZone.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') docFileInput.click();
+});
+
+docFileInput.addEventListener('change', () => {
+    if (docFileInput.files.length > 0) handleDocSelect(docFileInput.files[0]);
+});
+
+// ── Doc Drag & Drop ────────────────────────────
+
+['dragenter', 'dragover'].forEach(event => {
+    docDropZone.addEventListener(event, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        docDropZone.classList.add('dragging');
+    });
+});
+
+['dragleave', 'drop'].forEach(event => {
+    docDropZone.addEventListener(event, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        docDropZone.classList.remove('dragging');
+    });
+});
+
+docDropZone.addEventListener('drop', (e) => {
+    const files = e.dataTransfer.files;
+    if (files.length > 0) handleDocSelect(files[0]);
+});
+
+// ── Handle Doc File ────────────────────────────
+
+function handleDocSelect(file) {
+    const name = file.name.toLowerCase();
+    if (!name.endsWith('.doc') && !name.endsWith('.docx')) {
+        showError('Format file tidak didukung. Gunakan file .doc atau .docx.');
+        return;
+    }
+
+    selectedDocFile = file;
+    docFilename = file.name;
+
+    // Update drop zone
+    docDropLabel.textContent = 'File dokumen siap diproses';
+    docDropHint.textContent  = 'Klik untuk mengganti file';
+
+    // Show preview
+    docNameEl.textContent = file.name;
+    docSizeEl.textContent = formatFileSize(file.size);
+    docPreview.classList.remove('hidden');
+
+    // Enable button
+    docGenerateBtn.disabled = false;
+    docBtnText.textContent = '✨ Buat Naskah Berita';
+
+    // Hide previous doc results
+    hideDocNews();
+    hideError();
+}
+
+function resetDocDropZone() {
+    selectedDocFile = null;
+    docFileInput.value = '';
+    docDropLabel.textContent = 'Seret & lepas file dokumen di sini';
+    docDropHint.textContent  = 'atau klik untuk memilih file .doc / .docx';
+    docPreview.classList.add('hidden');
+    docGenerateBtn.disabled = true;
+    docBtnText.textContent = 'Pilih File Dokumen untuk Memulai';
+}
+
+docRemoveBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    resetDocDropZone();
+    hideDocNews();
+    hideError();
+});
+
+// ── Doc Generate Script ────────────────────────
+
+docGenerateBtn.addEventListener('click', async () => {
+    if (!selectedDocFile) return;
+
+    // Loading state
+    docBtnText.textContent = 'Membaca dokumen...';
+    docBtnSpinner.classList.remove('hidden');
+    docGenerateBtn.disabled = true;
+    docDropZone.style.pointerEvents = 'none';
+    docDropZone.style.opacity = '0.6';
+
+    hideDocNews();
+    hideError();
+
+    try {
+        // Step 1: Upload and extract text from doc
+        const formData = new FormData();
+        formData.append('file', selectedDocFile);
+
+        const uploadResp = await fetch('/upload-transcript', {
+            method: 'POST',
+            body: formData,
+        });
+
+        const uploadText = await uploadResp.text();
+        let uploadData;
+        try {
+            uploadData = JSON.parse(uploadText);
+        } catch (parseErr) {
+            throw new Error(`Server error (${uploadResp.status}): ${uploadText.substring(0, 100)}`);
+        }
+
+        if (!uploadResp.ok || uploadData.error) {
+            throw new Error(uploadData.error || 'Gagal membaca dokumen.');
+        }
+
+        const extractedText = uploadData.text;
+
+        // Step 2: Send to paraphrase endpoint to generate script
+        docBtnText.textContent = 'Menyusun naskah berita...';
+
+        const paraResp = await fetch('/paraphrase', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: extractedText })
+        });
+
+        const paraText = await paraResp.text();
+        let paraData;
+        try {
+            paraData = JSON.parse(paraText);
+        } catch (parseErr) {
+            throw new Error(`Server error (${paraResp.status}): ${paraText.substring(0, 100)}`);
+        }
+
+        if (!paraResp.ok || paraData.error) {
+            throw new Error(paraData.error || 'Terjadi kesalahan saat menyusun naskah.');
+        }
+
+        showDocNews(paraData.paraphrased, docFilename);
+
+    } catch (err) {
+        showError(err.message);
+    } finally {
+        docBtnText.textContent = '✨ Buat Naskah Berita';
+        docBtnSpinner.classList.add('hidden');
+        docGenerateBtn.disabled = !selectedDocFile;
+        docDropZone.style.pointerEvents = '';
+        docDropZone.style.opacity = '';
+    }
+});
+
+// ── Doc News Display ───────────────────────────
+
+function showDocNews(text, filename) {
+    docNewsText.textContent = '';
+    docNewsCard.classList.remove('hidden');
+    docNewsCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    // Typewriter
+    let i = 0;
+    const speed = Math.max(8, Math.min(25, Math.floor(8000 / text.length)));
+    const interval = setInterval(() => {
+        docNewsText.textContent += text[i] || '';
+        i++;
+        if (i >= text.length) clearInterval(interval);
+    }, speed);
+
+    // Download setup
+    docNewsDownloadBtn.onclick = () => downloadDocx(text, filename.replace(/\.[^.]+$/, '') + '_naskah');
+}
+
+function hideDocNews() {
+    docNewsCard.classList.add('hidden');
+    docNewsText.textContent = '';
+}
+
+// ── Doc Copy ───────────────────────────────────
+
+docNewsCopyBtn.addEventListener('click', async () => {
+    const text = docNewsText.textContent;
+    if (!text) return;
+    try {
+        await navigator.clipboard.writeText(text);
+        const orig = docNewsCopyBtn.innerHTML;
+        docNewsCopyBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" width="16" height="16">
+            <path d="M5 13l4 4L19 7" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg> Tersalin!`;
+        docNewsCopyBtn.style.borderColor = 'rgba(52,211,153,0.4)';
+        docNewsCopyBtn.style.color = '#34d399';
+        setTimeout(() => {
+            docNewsCopyBtn.innerHTML = orig;
+            docNewsCopyBtn.style.borderColor = '';
+            docNewsCopyBtn.style.color = '';
+        }, 2000);
+    } catch {
+        showError('Gagal menyalin naskah. Coba pilih teks secara manual.');
+    }
+});
