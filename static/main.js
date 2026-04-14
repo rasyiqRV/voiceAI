@@ -281,18 +281,14 @@ function showNews(text, filename) {
     newsCard.classList.remove('hidden');
     newsCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-    // Typewriter animation
     let i = 0;
     const speed = Math.max(8, Math.min(25, Math.floor(8000 / text.length)));
     const interval = setInterval(() => {
         newsText.textContent += text[i] || '';
         i++;
-        if (i >= text.length) {
-            clearInterval(interval);
-        }
+        if (i >= text.length) clearInterval(interval);
     }, speed);
 
-    // Download setup
     newsDownloadBtn.onclick = () => downloadDocx(text, filename.replace(/\.[^.]+$/, '') + '_naskah');
 }
 
@@ -595,7 +591,6 @@ function showDocNews(text, filename) {
     docNewsCard.classList.remove('hidden');
     docNewsCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-    // Typewriter
     let i = 0;
     const speed = Math.max(8, Math.min(25, Math.floor(8000 / text.length)));
     const interval = setInterval(() => {
@@ -604,7 +599,6 @@ function showDocNews(text, filename) {
         if (i >= text.length) clearInterval(interval);
     }, speed);
 
-    // Download setup
     docNewsDownloadBtn.onclick = () => downloadDocx(text, filename.replace(/\.[^.]+$/, '') + '_naskah');
 }
 
